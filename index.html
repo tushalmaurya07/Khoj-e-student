@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PCE Lab Call Recording Submission (Firebase)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .modal-backdrop {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            transition: opacity 0.3s ease;
+        }
+        .modal-content {
+            background-color: white;
+            padding: 2rem;
+            border-radius: 0.5rem;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transform: scale(0.95);
+            transition: transform 0.3s ease;
+        }
+        .modal-backdrop:not(.hidden) .modal-content {
+            transform: scale(1);
+        }
+        #loader {
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #3498db;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            margin-left: -25px;
+            margin-top: -25px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800">
+
+    <div id="loader"></div>
+
+    <div id="app-content" class="container mx-auto p-4 md:p-8 hidden">
+        <header class="text-center mb-8">
+            <h1 class="text-3xl md:text-4xl font-bold text-gray-900">PCE Lab Call Log</h1>
+            <p class="text-gray-600 mt-2">Track and submit call recordings for students not attending labs regularly.</p>
+        </header>
+
+        <div class="bg-white p-4 rounded-lg shadow-md mb-8">
+            <h2 class="text-xl font-semibold mb-2">Overall Progress</h2>
+            <div class="w-full bg-gray-200 rounded-full h-4">
+                <div id="progressBar" class="bg-blue-600 h-4 rounded-full text-xs font-medium text-blue-100 text-center p-0.5 leading-none" style="width: 0%"></div>
+            </div>
+            <p id="progressText" class="text-center text-sm font-medium text-gray-700 mt-2">0 / 60 Recordings Submitted</p>
+        </div>
+        
+        <div class="flex justify-between items-center mb-4">
+             <button id="addAssignmentBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition duration-300">
+                + Add New Assignment
+            </button>
+            <button id="exportCsvBtn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition duration-300">
+                Export as CSV
+            </button>
+        </div>
+
+        <div class="bg-white rounded-lg shadow-md overflow-x-auto">
+            <table class="w-full table-auto">
+                <thead class="bg-gray-100 border-b-2 border-gray-200">
+                    <tr>
+                        <th class="p-3 text-sm font-semibold tracking-wide text-left">#</th>
+                        <th class="p-3 text-sm font-semibold tracking-wide text-left">Caller Name</th>
+                        <th class="p-3 text-sm font-semibold tracking-wide text-left">Called Student</th>
+                        <th class="p-3 text-sm font-semibold tracking-wide text-left">Enrollment No.</th>
+                        <th class="p-3 text-sm font-semibold tracking-wide text-left">Status</th>
+                        <th class="p-3 text-sm font-semibold tracking-wide text-center">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="assignments-table-body" class="divide-y divide-gray-200">
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Add / Edit Modal -->
+    <div id="assignmentModal" class="modal-backdrop hidden">
+        <div class="modal-content">
+            <h2 class="text-2xl font-bold mb-6" id="modalTitle"></h2>
+            <form id="assignmentForm">
+                <input type="hidden" id="assignmentId">
+                <div class="space-y-4">
+                    <div>
+                        <label for="callerName" class="block text-sm font-medium text-gray-700">Caller Name</label>
+                        <input type="text" id="callerName" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md" required>
+                    </div>
+                    <div>
+                        <label for="calledStudent" class="block text-sm font-medium text-gray-700">Called Student</label>
+                        <input type="text" id="calledStudent" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md" required>
+                    </div>
+                    <div>
+                        <label for="enrollmentNo" class="block text-sm font-medium text-gray-700">Enrollment No.</label>
+                        <input type="text" id="enrollmentNo" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md" required>
+                    </div>
+                    <div>
+                        <label for="recordingLink" class="block text-sm font-medium text-gray-700">Recording Link (optional)</label>
+                        <input type="url" id="recordingLink" placeholder="https://..." class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md">
+                    </div>
+                </div>
+                <div class="mt-8 flex justify-end gap-4">
+                    <button type="button" id="cancelBtn" class="py-2 px-4 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">Cancel</button>
+                    <button type="submit" class="py-2 px-4 bg-blue-600 text-white rounded-md hover:bg-blue-700">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+     <!-- Delete Confirmation Modal -->
+    <div id="deleteModal" class="modal-backdrop hidden">
+        <div class="modal-content">
+            <h2 class="text-2xl font-bold mb-4">Confirm Deletion</h2>
+            <p class="text-gray-600 mb-6">Are you sure you want to delete this assignment? This action cannot be undone.</p>
+            <div class="flex justify-end gap-4">
+                <button type="button" id="cancelDeleteBtn" class="py-2 px-4 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">Cancel</button>
+                <button type="button" id="confirmDeleteBtn" class="py-2 px-4 bg-red-600 text-white rounded-md hover:bg-red-700">Delete</button>
+            </div>
+        </div>
+    </div>
+
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getFirestore, collection, doc, onSnapshot, updateDoc, setDoc, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyCgcd_QSLdS7eGxGPObtUd66-mPdo5Vua4",
+            authDomain: "pce-khoj-e-student.firebaseapp.com",
+            projectId: "pce-khoj-e-student",
+            storageBucket: "pce-khoj-e-student.firebasestorage.app",
+            messagingSenderId: "416311407430",
+            appId: "1:416311407430:web:e2262161c7a70a6204ab47",
+            measurementId: "G-3B38XEZ2LM"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const initialAssignments = [
+                { id: 1, caller: 'Koli Panth', called: 'PANDYA HIMARSH YOGENDRABHAI', enrollment: '240160116066', status: 'Pending', link: null },
+                { id: 2, caller: 'Koli Panth', called: 'PATEL HASTI HASMUKHLAL', enrollment: '240160116079', status: 'Pending', link: null },
+                { id: 3, caller: 'Koli Panth', called: 'KATARA SOHAM MUKESHKUMAR', enrollment: '240160116044', status: 'Pending', link: null },
+                { id: 4, caller: 'Odhera Kuldeep', called: 'KHATRI MAHMADFAIZ KASAM', enrollment: '240160116045', status: 'Pending', link: null },
+                { id: 5, caller: 'Odhera Kuldeep', called: 'PATEL MANSI KALPESHBHAI', enrollment: '240160116052', status: 'Pending', link: null },
+                { id: 6, caller: 'Odhera Kuldeep', called: 'PANCHAL DIPKUMAR RAJESHBHAI', enrollment: 'D2D IT 11', status: 'Pending', link: null },
+                { id: 7, caller: 'Maurya Tushal', called: 'MANVA UMAR FARUKMAHAMMED', enrollment: '240160116054', status: 'Pending', link: null },
+                { id: 8, caller: 'Maurya Tushal', called: 'PATEL HETVI SUNILBHAI', enrollment: '240160116080', status: 'Pending', link: null },
+                { id: 9, caller: 'Maurya Tushal', called: 'PANDYA HEER DHIMANTKUMAR', enrollment: 'D2D IT 13', status: 'Pending', link: null },
+                { id: 10, caller: 'Mistry Parthiv', called: 'MANTHAN MANISHBHAI VYAS', enrollment: '240160116053', status: 'Pending', link: null },
+                { id: 11, caller: 'Mistry Parthiv', called: 'PATEL KASHISH HIRENBHAI', enrollment: '240160116084', status: 'Pending', link: null },
+                { id: 12, caller: 'Mistry Parthiv', called: 'PATEL JENISH JITESHKUMAR', enrollment: 'D2D IT 16', status: 'Pending', link: null },
+                { id: 13, caller: 'Patel Lakshit', called: 'PANDEY ABHISEKH ANIL', enrollment: '240160116064', status: 'Pending', link: null },
+                { id: 14, caller: 'Patel Lakshit', called: 'PATEL KRISHA DINESHBHAI', enrollment: '240160116086', status: 'Pending', link: null },
+                { id: 15, caller: 'Patel Lakshit', called: 'PRAJAPATI HIMANSHU KALPESHBHAI', enrollment: 'D2D IT 20', status: 'Pending', link: null },
+                { id: 16, caller: 'Pampaniya Hitesh', called: 'NAYAK KRISH PAVANBHAI', enrollment: '240160116059', status: 'Pending', link: null },
+                { id: 17, caller: 'Pampaniya Hitesh', called: 'PATEL HIMANSHUBHAI JAYPRAKASH', enrollment: '240160116082', status: 'Pending', link: null },
+                { id: 18, caller: 'Pampaniya Hitesh', called: 'CHAUHAN KRISHNA MAHESHKUMAR', enrollment: 'D2D IT 1', status: 'Pending', link: null },
+                { id: 19, caller: 'Malhar Vala', called: 'MACWAN RIKENKUMAR RAJESHBHAI', enrollment: '240160116049', status: 'Pending', link: null },
+                { id: 20, caller: 'Malhar Vala', called: 'PARMAR TUSHAR SANTILAL', enrollment: '240160116068', status: 'Pending', link: null },
+                { id: 21, caller: 'Malhar Vala', called: 'GONDALIYA PRINCE DHARMESHKUMAR', enrollment: 'D2D IT 2', status: 'Pending', link: null },
+                { id: 22, caller: 'Yagnik Patel', called: 'PADHIYAR SUMITBHAI PRAKASHBHAI', enrollment: '240160116062', status: 'Pending', link: null },
+                { id: 23, caller: 'Yagnik Patel', called: 'PATEL DHRUV SANJAYKUMAR', enrollment: '240160116071', status: 'Pending', link: null },
+                { id: 24, caller: 'Yagnik Patel', called: 'GOSAI RUDRAGIRI DIPAKGIRI', enrollment: 'D2D IT 3', status: 'Pending', link: null },
+                { id: 25, caller: 'Suthar Mihir', called: 'PATEL DEEPKUMAR CHANDRAVADAN', enrollment: '240160116070', status: 'Pending', link: null },
+                { id: 26, caller: 'Suthar Mihir', called: 'PATEL DHRUVKUMAR PANKAJBHAI', enrollment: '240160116072', status: 'Pending', link: null },
+                { id: 27, caller: 'Suthar Mihir', called: 'JADEJA AVIRAJSINH PRADIPSINH', enrollment: 'D2D IT 4', status: 'Pending', link: null },
+                { id: 28, caller: 'Makvana Yuvraj', called: 'Pandey krish chandanbhai', enrollment: '240160116065', status: 'Pending', link: null },
+                { id: 29, caller: 'Makvana Yuvraj', called: 'PATEL DINALBHAI DHIRUBHAI', enrollment: '240160116073', status: 'Pending', link: null },
+                { id: 30, caller: 'Makvana Yuvraj', called: 'JAYSWAL SUJAL SHAILESHBHAI', enrollment: 'D2D IT 5', status: 'Pending', link: null },
+                { id: 31, caller: 'Talaviya Viren', called: 'PATEL FENIL DINESHBHAI', enrollment: '240160116077', status: 'Pending', link: null },
+                { id: 32, caller: 'Talaviya Viren', called: 'SOLANKI SAHIL PRAVINBHAI', enrollment: '240160116131', status: 'Pending', link: null },
+                { id: 33, caller: 'Talaviya Viren', called: 'KACHA KRISH SANJAYBHAI', enrollment: 'D2D IT 6', status: 'Pending', link: null },
+                { id: 34, caller: 'Yadav Ashish', called: 'PATEL HILAY NITESHKUMAR', enrollment: '240160116081', status: 'Pending', link: null },
+                { id: 35, caller: 'Yadav Ashish', called: 'SONI DHAIRYA RAJESHKUMAR', enrollment: '240160116132', status: 'Pending', link: null },
+                { id: 36, caller: 'Yadav Ashish', called: 'KHUHA MANSI JAGDISHBHAI', enrollment: 'D2D_IT_7', status: 'Pending', link: null },
+                { id: 37, caller: 'Khant siddhrajsinh', called: 'PATEL KEVIN PANKAJKUMAR', enrollment: '240160116085', status: 'Pending', link: null },
+                { id: 38, caller: 'Khant siddhrajsinh', called: 'TIRTH CHIMANBHAI PATEL', enrollment: '240160116142', status: 'Pending', link: null },
+                { id: 39, caller: 'Khant siddhrajsinh', called: 'KUBAVAT PARTH RAJESHBHAI', enrollment: 'D2D IT 8', status: 'Pending', link: null },
+                { id: 40, caller: 'Valand Deep', called: 'TRIPATHI ANUJ SANTOSHKUMAR', enrollment: '240160116143', status: 'Pending', link: null },
+                { id: 41, caller: 'Valand Deep', called: 'TRUSH', enrollment: '240160116144', status: 'Pending', link: null },
+                { id: 42, caller: 'Valand Deep', called: 'MANSARA HET GHANSHYAMBHAI', enrollment: 'D2D_IT_9', status: 'Pending', link: null },
+                { id: 43, caller: 'Aelliya Yuvraj', called: 'SUTHAR MANAV PRAMODKUMAR', enrollment: '240160116134', status: 'Pending', link: null },
+                { id: 44, caller: 'Aelliya Yuvraj', called: 'PATEL HANI MANISHBHAI', enrollment: '240160116078', status: 'Pending', link: null },
+                { id: 45, caller: 'Aelliya Yuvraj', called: 'PADHIYAR PRUTHVI', enrollment: '240160116061', status: 'Pending', link: null },
+                { id: 46, caller: 'Makwana Vani', called: 'PATEL AAINEE ASHOKBHAI', enrollment: '240160116069', status: 'Pending', link: null },
+                { id: 47, caller: 'Makwana Vani', called: 'PATEL DIYA KAUSHIKBHAI', enrollment: '240160116075', status: 'Pending', link: null },
+                { id: 48, caller: 'Makwana Vani', called: 'VALA DHARABEN DINESHBHAI', enrollment: '240160116145', status: 'Pending', link: null },
+                { id: 49, caller: 'Suthar Richi', called: 'SUTHAR SANIYA USMANGANI', enrollment: '240160116137', status: 'Pending', link: null },
+                { id: 50, caller: 'Suthar Richi', called: 'TANDEL PALAK SHAILESHBHAI', enrollment: '240160116139', status: 'Pending', link: null },
+                { id: 51, caller: 'Suthar Richi', called: 'TANDEL SIDDHI PRAVINKUMAR', enrollment: '240160116140', status: 'Pending', link: null },
+                { id: 52, caller: 'Yadav Harikesh', called: 'PATEL JENIL MANESH', enrollment: '240160116083', status: 'Pending', link: null },
+                { id: 53, caller: 'Yadav Harikesh', called: 'SUTHAR MIHIRKUMAR BHARATBHAI', enrollment: '240160116135', status: 'Pending', link: null },
+                { id: 54, caller: 'Yadav Harikesh', called: 'PANCHAL AKSHAT NARENDRABHAI', enrollment: 'D2D IT 10', status: 'Pending', link: null },
+                { id: 55, caller: 'NAI ROSHAN', called: 'PARMAR SANDIP DINESHBHAI', enrollment: '240160116067', status: 'Pending', link: null },
+                { id: 56, caller: 'NAI ROSHAN', called: 'PATEL DIP ASHOKBHAI', enrollment: '240160116074', status: 'Pending', link: null },
+                { id: 57, caller: 'NAI ROSHAN', called: 'QURESHI SALOMI SAMIUDDIN', enrollment: 'D2D IT 21', status: 'Pending', link: null },
+                { id: 58, caller: 'THAKAR PREM', called: 'KOTWAL MUHAMMADUZAIRRAZ', enrollment: '240160116047', status: 'Pending', link: null },
+                { id: 59, caller: 'THAKAR PREM', called: 'PATEL DARSH JITENDRAKUMAR', enrollment: '240160116076', status: 'Pending', link: null },
+                { id: 60, caller: 'THAKAR PREM', called: 'TANDEL KHUSHI MAHESHKUMAR', enrollment: 'D2D IT 22', status: 'Pending', link: null }
+            ];
+
+            let assignments = [];
+            let assignmentToDeleteId = null;
+
+            // DOM Elements
+            const loader = document.getElementById('loader');
+            const appContent = document.getElementById('app-content');
+            const tableBody = document.getElementById('assignments-table-body');
+            const exportCsvBtn = document.getElementById('exportCsvBtn');
+            const addAssignmentBtn = document.getElementById('addAssignmentBtn');
+            // Modals
+            const assignmentModal = document.getElementById('assignmentModal');
+            const assignmentForm = document.getElementById('assignmentForm');
+            const modalTitle = document.getElementById('modalTitle');
+            const cancelBtn = document.getElementById('cancelBtn');
+            const deleteModal = document.getElementById('deleteModal');
+            const cancelDeleteBtn = document.getElementById('cancelDeleteBtn');
+            const confirmDeleteBtn = document.getElementById('confirmDeleteBtn');
+            // Form Inputs
+            const assignmentIdInput = document.getElementById('assignmentId');
+            const callerNameInput = document.getElementById('callerName');
+            const calledStudentInput = document.getElementById('calledStudent');
+            const enrollmentNoInput = document.getElementById('enrollmentNo');
+            const recordingLinkInput = document.getElementById('recordingLink');
+            // Progress Bar
+            const progressBar = document.getElementById('progressBar');
+            const progressText = document.getElementById('progressText');
+            
+            const assignmentsColRef = collection(db, "assignments");
+
+            async function initializeDataIfNeeded() {
+                const snapshot = await getDocs(assignmentsColRef);
+                if (snapshot.empty) {
+                    console.log("No data found in Firestore. Initializing...");
+                    const promises = initialAssignments.map(assignment => {
+                        const docRef = doc(db, "assignments", String(assignment.id));
+                        return setDoc(docRef, assignment);
+                    });
+                    await Promise.all(promises);
+                    console.log("Initial data uploaded to Firestore.");
+                }
+            }
+            
+            function setupRealtimeListener() {
+                onSnapshot(assignmentsColRef, (snapshot) => {
+                    let fetchedAssignments = [];
+                    snapshot.forEach((doc) => fetchedAssignments.push(doc.data()));
+                    assignments = fetchedAssignments.sort((a, b) => a.id - b.id);
+                    renderTable();
+                    loader.style.display = 'none';
+                    appContent.classList.remove('hidden');
+                });
+            }
+
+            function updateProgress() {
+                const submittedCount = assignments.filter(a => a.status === 'Submitted').length;
+                const totalCount = assignments.length;
+                const percentage = totalCount > 0 ? (submittedCount / totalCount) * 100 : 0;
+                progressBar.style.width = `${percentage}%`;
+                progressBar.textContent = `${Math.round(percentage)}%`;
+                progressText.textContent = `${submittedCount} / ${totalCount} Recordings Submitted`;
+            }
+
+            function renderTable() {
+                tableBody.innerHTML = '';
+                assignments.forEach(assignment => {
+                    const row = document.createElement('tr');
+                    const statusColor = assignment.status === 'Submitted' ? 'text-green-600' : 'text-yellow-600';
+                    const statusBg = assignment.status === 'Submitted' ? 'bg-green-100' : 'bg-yellow-100';
+                    const viewLink = assignment.link ? `<a href="${assignment.link}" target="_blank" class="text-sm bg-gray-500 hover:bg-gray-600 text-white py-1 px-3 rounded-full">View</a>` : '';
+
+                    row.innerHTML = `
+                        <td class="p-3 text-sm text-gray-700">${assignment.id}</td>
+                        <td class="p-3 text-sm text-gray-700 font-medium">${assignment.caller}</td>
+                        <td class="p-3 text-sm text-gray-700">${assignment.called}</td>
+                        <td class="p-3 text-sm text-gray-700">${assignment.enrollment}</td>
+                        <td class="p-3 text-sm font-semibold">
+                            <span class="p-1.5 text-xs font-medium uppercase tracking-wider ${statusColor} ${statusBg} rounded-lg bg-opacity-50">${assignment.status}</span>
+                        </td>
+                        <td class="p-3 text-sm text-center">
+                            <div class="flex justify-center items-center gap-2">
+                                ${viewLink}
+                                <button data-id="${assignment.id}" class="edit-btn text-sm bg-blue-500 hover:bg-blue-600 text-white py-1 px-3 rounded-full">Edit</button>
+                                <button data-id="${assignment.id}" class="delete-btn text-sm bg-red-500 hover:bg-red-600 text-white py-1 px-3 rounded-full">Delete</button>
+                            </div>
+                        </td>
+                    `;
+                    tableBody.appendChild(row);
+                });
+                updateProgress();
+            }
+            
+            async function saveAssignment(assignmentData) {
+                const docRef = doc(db, "assignments", String(assignmentData.id));
+                try {
+                    await setDoc(docRef, assignmentData);
+                } catch (error) {
+                    console.error("Error saving document: ", error);
+                }
+            }
+            
+            async function deleteAssignment(id) {
+                 const docRef = doc(db, "assignments", String(id));
+                try {
+                    await deleteDoc(docRef);
+                } catch (error) {
+                    console.error("Error deleting document: ", error);
+                }
+            }
+
+            function openAssignmentModal(id = null) {
+                assignmentForm.reset();
+                if (id) {
+                    // Edit mode
+                    const assignment = assignments.find(a => a.id === id);
+                    if (assignment) {
+                        modalTitle.textContent = "Edit Assignment";
+                        assignmentIdInput.value = assignment.id;
+                        callerNameInput.value = assignment.caller;
+                        calledStudentInput.value = assignment.called;
+                        enrollmentNoInput.value = assignment.enrollment;
+                        recordingLinkInput.value = assignment.link || '';
+                    }
+                } else {
+                    // Add mode
+                    modalTitle.textContent = "Add New Assignment";
+                    assignmentIdInput.value = ''; // Ensure ID is empty for new entries
+                }
+                assignmentModal.classList.remove('hidden');
+            }
+
+            function closeAssignmentModal() {
+                assignmentModal.classList.add('hidden');
+            }
+            
+            function openDeleteModal(id) {
+                assignmentToDeleteId = id;
+                deleteModal.classList.remove('hidden');
+            }
+            
+            function closeDeleteModal() {
+                assignmentToDeleteId = null;
+                deleteModal.classList.add('hidden');
+            }
+            
+            function exportToCsv() {
+                let csvContent = "data:text/csv;charset=utf-8,";
+                csvContent += "ID,Caller,Called Student,Enrollment,Status,Recording Link\r\n";
+                assignments.forEach(row => {
+                    const csvRow = [row.id, `"${row.caller}"`, `"${row.called}"`, row.enrollment, row.status, row.link || 'N/A'].join(",");
+                    csvContent += csvRow + "\r\n";
+                });
+                const encodedUri = encodeURI(csvContent);
+                const link = document.createElement("a");
+                link.setAttribute("href", encodedUri);
+                link.setAttribute("download", "pce_lab_call_log.csv");
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            }
+
+            // EVENT LISTENERS
+            tableBody.addEventListener('click', (e) => {
+                if (e.target.classList.contains('edit-btn')) {
+                    openAssignmentModal(parseInt(e.target.dataset.id, 10));
+                }
+                if (e.target.classList.contains('delete-btn')) {
+                    openDeleteModal(parseInt(e.target.dataset.id, 10));
+                }
+            });
+
+            assignmentForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const id = assignmentIdInput.value ? parseInt(assignmentIdInput.value, 10) : null;
+                const link = recordingLinkInput.value.trim();
+                let assignmentData;
+
+                if (id) { // Editing existing assignment
+                    const originalAssignment = assignments.find(a => a.id === id);
+                    assignmentData = {
+                        ...originalAssignment,
+                        caller: callerNameInput.value,
+                        called: calledStudentInput.value,
+                        enrollment: enrollmentNoInput.value,
+                        link: link || null,
+                        status: link ? 'Submitted' : 'Pending',
+                    };
+                } else { // Adding new assignment
+                    const newId = assignments.length > 0 ? Math.max(...assignments.map(a => a.id)) + 1 : 1;
+                    assignmentData = {
+                        id: newId,
+                        caller: callerNameInput.value,
+                        called: calledStudentInput.value,
+                        enrollment: enrollmentNoInput.value,
+                        link: link || null,
+                        status: link ? 'Submitted' : 'Pending',
+                    };
+                }
+                await saveAssignment(assignmentData);
+                closeAssignmentModal();
+            });
+
+            addAssignmentBtn.addEventListener('click', () => openAssignmentModal());
+            cancelBtn.addEventListener('click', closeAssignmentModal);
+            assignmentModal.addEventListener('click', (e) => { if (e.target === assignmentModal) closeAssignmentModal() });
+            
+            confirmDeleteBtn.addEventListener('click', async () => {
+                if (assignmentToDeleteId) {
+                    await deleteAssignment(assignmentToDeleteId);
+                    closeDeleteModal();
+                }
+            });
+            cancelDeleteBtn.addEventListener('click', closeDeleteModal);
+            deleteModal.addEventListener('click', (e) => { if (e.target === deleteModal) closeDeleteModal() });
+            
+            exportCsvBtn.addEventListener('click', exportToCsv);
+
+            // Main execution flow
+            onAuthStateChanged(auth, async (user) => {
+              if (user) {
+                await initializeDataIfNeeded();
+                setupRealtimeListener();
+              } else {
+                signInAnonymously(auth).catch((error) => console.error("Anonymous sign-in failed:", error));
+              }
+            });
+        });
+    </script>
+</body>
+</html>
+
